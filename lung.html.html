@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Тыныс алатын өкпе — 3D биофизикалық модель</title>
+<style>
+:root{--bg:#f6f4f1;--card:#ffffff;--fg:#1d2330;--mut:#667085;--line:#e3e0da;--acc:#d6455d;--blue:#2a7fff;--org:#ff8a3d;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12151c;--card:#1b2030;--fg:#eceff6;--mut:#9aa3b5;--line:#2c3348;--acc:#ff6b84;--blue:#5aa0ff;--org:#ffa466;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#12151c;--card:#1b2030;--fg:#eceff6;--mut:#9aa3b5;--line:#2c3348;--acc:#ff6b84;--blue:#5aa0ff;--org:#ffa466;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:640px;margin:0 auto;padding:14px 14px 28px}
+h1{font-size:19px;margin:4px 0 2px}
+.sub{color:var(--mut);font-size:13px;margin:0 0 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px}
+#view{width:100%;aspect-ratio:1/1;max-height:420px;touch-action:none;border-radius:12px;position:relative;overflow:hidden}
+#view canvas{display:block;width:100%;height:100%}
+#phase{position:absolute;left:10px;top:8px;font-weight:700;font-size:15px}
+.hint{position:absolute;right:10px;bottom:6px;font-size:11px;color:var(--mut)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.st{background:var(--bg);border-radius:10px;padding:8px 10px}
+.st b{display:block;font-size:20px}
+.st span{font-size:12px;color:var(--mut)}
+.row{margin:10px 0}
+.row label{display:flex;justify-content:space-between;font-size:13px}
+.row output{font-weight:700}
+input[type=range]{width:100%;accent-color:var(--acc)}
+.pre{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
+button{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-size:13px}
+button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+canvas#ch{width:100%;height:130px;display:block}
+.leg{font-size:12px;color:var(--mut);display:flex;gap:14px}
+.eq{font-family:ui-monospace,Menlo,monospace;background:var(--bg);padding:6px 8px;border-radius:8px;font-size:13px;display:inline-block}
+ul{padding-left:18px;margin:6px 0}
+li{margin:4px 0;font-size:14px}
+#err{display:none;color:var(--acc);padding:20px}
+</style>
+</head>
+<body>
+<main>
+<h1>Тыныс алатын өкпенің 3D моделі</h1>
+<p class="sub">Анатомия: оң өкпе — 3 бөлік, сол өкпе — 2 бөлік (жүрек ойығымен). Биофизика: RC-модель + Бойль заңы. Модельді саусақпен айналдырыңыз.</p>
+
+<div class="card">
+  <div id="view"><div id="phase"></div><div class="hint">айналдыру: сүйреңіз</div><div id="err">WebGL қолдау көрсетілмейді</div></div>
+  <div style="margin-top:8px"><button id="xr">Бронх ағашын көрсету (мөлдір)</button></div>
+</div>
+
+<div class="card stats">
+  <div class="st"><b id="sV">0</b><span>Көлем V, мл (FRC үстінде)</span></div>
+  <div class="st"><b id="sF">0</b><span>Ауа ағыны, л/с</span></div>
+  <div class="st"><b id="sP">0</b><span>Альвеолалық қысым, cmH₂O</span></div>
+  <div class="st"><b id="sM">0</b><span>Минуттық вентиляция, л/мин</span></div>
+</div>
+
+<div class="card">
+  <div class="pre" id="pre">
+    <button data-p="n" class="on">Қалыпты</button>
+    <button data-p="a">Астма (R↑)</button>
+    <button data-p="f">Фиброз (C↓)</button>
+    <button data-p="e">Эмфизема (C↑)</button>
+  </div>
+  <div class="row"><label>Тыныс жиілігі <output id="oRate"></output></label><input id="rate" type="range" min="6" max="40" step="1" value="15"></div>
+  <div class="row"><label>Созылымдылық C (л/cmH₂O) <output id="oC"></output></label><input id="C" type="range" min="0.01" max="0.30" step="0.01" value="0.10"></div>
+  <div class="row"><label>Ауа жолы кедергісі R (cmH₂O·с/л) <output id="oR"></output></label><input id="R" type="range" min="1" max="20" step="0.5" value="2"></div>
+  <div class="row"><label>Тыныс бұлшықеттерінің күші P (cmH₂O) <output id="oP"></output></label><input id="P" type="range" min="2" max="12" step="0.5" value="5"></div>
+  <div>Уақыт тұрақтысы: <b>τ = R·C = <span id="tau"></span> с</b></div>
+</div>
+
+<div class="card">
+  <canvas id="ch"></canvas>
+  <div class="leg"><span style="color:var(--acc)">● Көлем V</span><span style="color:var(--blue)">● Ағын</span></div>
+</div>
+
+<div class="card">
+  <b>Модель қалай жұмыс істейді?</b>
+  <p><span class="eq">R·dV/dt + V/C = P(t)</span></p>
+  <ul>
+    <li><b>Дем алу:</b> диафрагма түседі, қабырғалар көтеріледі → көкірек көлемі артады. Бойль заңы (P·V = const) бойынша альвеолалық қысым атмосфералықтан төмен түседі, ауа өкпеге кіреді.</li>
+    <li><b>Дем шығару:</b> пассивті — өкпенің серпімді қайтарымы V/C ауаны сыртқа итереді.</li>
+    <li><b>Созылымдылық C:</b> ΔV = C·ΔP. Фиброзда C аз (өкпе қатты), эмфиземада C көп.</li>
+    <li><b>Кедергі R:</b> Пуазейль заңы бойынша бронх радиусына R ∝ 1/r⁴. Астмада бронх тарылады → R өседі, дем шығару баяулайды.</li>
+    <li>Көлем көрнекілік үшін ×3 үлкейтіліп көрсетіледі. Дем алу : дем шығару = 1 : 2.</li>
+  </ul>
+</div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const S={rate:15,C:0.10,R:2,P:5};
+const FRC=2.4; // функционалдық қалдық сыйымдылық, л
+const PRE={n:[15,0.10,2,5],a:[18,0.10,9,6],f:[24,0.03,2,5],e:[14,0.25,3,5]};
+function sync(){
+  $('oRate').textContent=S.rate+' рет/мин';$('oC').textContent=S.C.toFixed(2);
+  $('oR').textContent=S.R.toFixed(1);$('oP').textContent=S.P.toFixed(1);
+  $('tau').textContent=(S.R*S.C).toFixed(2);
+}
+['rate','C','R','P'].forEach(k=>$(k).addEventListener('input',e=>{S[k]=+e.target.value;sync();
+  document.querySelectorAll('#pre button').forEach(b=>b.classList.remove('on'));}));
+document.querySelectorAll('#pre button').forEach(b=>b.addEventListener('click',()=>{
+  const p=PRE[b.dataset.p];[S.rate,S.C,S.R,S.P]=p;
+  ['rate','C','R','P'].forEach((k,i)=>$(k).value=p[i]);
+  document.querySelectorAll('#pre button').forEach(x=>x.classList.remove('on'));b.classList.add('on');sync();}));
+sync();
+// Сыртқы сайттан тыныс жиілігін қабылдау: ?rate=18 немесе #rate=18 немесе postMessage({rate:18})
+function setRate(r){r=Math.round(+r);if(r>=6&&r<=40){S.rate=r;$('rate').value=r;sync();}}
+try{const q=new URLSearchParams(location.search+'&'+location.hash.slice(1));if(q.get('rate'))setRate(q.get('rate'));}catch(e){}
+addEventListener('message',e=>{if(e.data&&e.data.rate)setRate(e.data.rate);});
+
+// ---------- 3D ----------
+const wrap=$('view');let renderer;
+try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});}catch(e){$('err').style.display='block';}
+const scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(42,1,0.1,50);cam.position.set(0,0.2,8);
+const root=new THREE.Group();scene.add(root);
+if(renderer){wrap.appendChild(renderer.domElement);renderer.setPixelRatio(Math.min(devicePixelRatio,2));}
+scene.add(new THREE.AmbientLight(0xffffff,0.65));
+const dl=new THREE.DirectionalLight(0xffffff,0.9);dl.position.set(3,4,6);scene.add(dl);
+
+const treeMat=new THREE.MeshPhongMaterial({color:0xf1e6cf,emissive:0x000000,shininess:30});
+const lungMat=new THREE.MeshPhongMaterial({vertexColors:true,shininess:60,specular:0x553333,side:THREE.DoubleSide});
+$('xr').addEventListener('click',()=>{const on=!lungMat.transparent;lungMat.transparent=on;lungMat.opacity=on?0.28:1;lungMat.depthWrite=!on;lungMat.needsUpdate=true;$('xr').classList.toggle('on',on);$('xr').textContent=on?'Нақты өкпе көрінісі':'Бронх ағашын көрсету (мөлдір)';});
+
+function branch(par,start,dir,len,rad,depth){
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(rad*0.72,rad,len,8),treeMat);
+  m.position.copy(start).addScaledVector(dir,len/2);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir);par.add(m);
+  if(depth<=0)return;
+  const end=start.clone().addScaledVector(dir,len);
+  let ax=new THREE.Vector3().crossVectors(dir,new THREE.Vector3(0,0,1));
+  if(ax.length()<0.05)ax.set(1,0,0);ax.normalize();
+  for(const s of[-1,1]){
+    const d=dir.clone().applyAxisAngle(ax,s*0.6);d.applyAxisAngle(dir,depth*1.2).normalize();
+    branch(par,end,d,len*0.76,rad*0.72,depth-1);
+  }
+}
+function makeLung(side){
+  const g=new THREE.SphereGeometry(1,64,48),p=g.attributes.position,col=[];
+  const sm=(a,b,v)=>{v=Math.min(1,Math.max(0,(v-a)/(b-a)));return v*v*(3-2*v);};
+  for(let i=0;i<p.count;i++){
+    let x=p.getX(i),y=p.getY(i),z=p.getZ(i);
+    const t=(y+1)/2;
+    x*=0.7*(1-0.5*t*t);z*=0.85*(1-0.35*t);y*=1.35;
+    const rad=Math.min(1,Math.hypot(x/0.7,z/0.85));
+    if(y<-0.6)y+=0.54*(-y-0.6)*(1-rad*rad); // диафрагмаға жабысатын ойыс табан
+    const med=sm(0,0.5,-x*side/0.7);
+    x+=side*0.3*med+side*0.22*med*Math.exp(-Math.pow((y-0.1)/0.4,2)); // жазық медиальды бет, өкпе қақпасы
+    if(side<0)x+=side*0.45*med*Math.exp(-Math.pow((y+0.35)/0.5,2))*sm(0,0.5,z); // сол өкпедегі жүрек ойығы
+    const d1=0.6*(y-0.2)+0.8*z,d2=y-0.15;
+    let gr=Math.exp(-Math.pow(d1/0.06,2)); // қиғаш саңылау
+    if(side>0&&d1>0)gr+=Math.exp(-Math.pow(d2/0.05,2))*sm(0,0.3,z); // оң өкпенің көлденең саңылауы
+    const f=1-0.07*Math.min(gr,1);x*=f;y*=f;z*=f;
+    const b=d1<0?[0.86,0.5,0.56]:(side>0&&d2<0&&z>0?[0.95,0.64,0.66]:[0.93,0.6,0.64]);
+    const nz=1+0.05*Math.sin(23*x+7*y)*Math.sin(19*z+5*y);
+    col.push(b[0]*nz,b[1]*nz,b[2]*nz);p.setXYZ(i,x,y,z);
+  }
+  g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.computeVertexNormals();
+  const m=new THREE.Mesh(g,lungMat);m.position.x=side*0.8;return m;
+}
+function makeLungOld(side){
+  const g=new THREE.SphereGeometry(1,44,34),p=g.attributes.position;
+  for(let i=0;i<p.count;i++){
+    let x=p.getX(i),y=p.getY(i),z=p.getZ(i);
+    const top=Math.max(y,0);
+    x*=0.58*(1-0.4*top);z*=0.72*(1-0.25*top);y*=1.3;
+    if(x*side<0){x*=0.62;if(side<0&&y<0)x*=0.75;} // медиальды бүйір
+    const n=0.03*Math.sin(5*y+3*x)*Math.cos(4*z);x+=n;z+=n;
+    p.setXYZ(i,x,y,z);
+  }
+  g.computeVertexNormals();
+  const m=new THREE.Mesh(g,lungMat);m.position.x=side*0.8;return m;
+}
+const lungs=new THREE.Group();root.add(lungs);
+[-1,1].forEach(s=>{
+  lungs.add(makeLung(s));
+  const d=new THREE.Vector3(s*0.45,-1,0.05).normalize();
+  branch(lungs,new THREE.Vector3(0,0.95,0),d,0.95,0.085,4);
+});
+const trachea=new THREE.Mesh(new THREE.CylinderGeometry(0.13,0.13,1.5,16),treeMat);
+trachea.position.y=1.7;root.add(trachea);
+for(let i=0;i<9;i++){const r=new THREE.Mesh(new THREE.TorusGeometry(0.135,0.022,8,24,Math.PI*1.7),treeMat);r.rotation.x=Math.PI/2;r.rotation.z=-Math.PI*0.35;r.position.y=1.0+i*0.16;root.add(r);} // трахея шеміршек сақиналары
+
+const ribs=new THREE.Group();root.add(ribs);
+const ribMat=new THREE.MeshPhongMaterial({color:0xcfc7b8,transparent:true,opacity:0.55});
+for(let i=0;i<6;i++){
+  const r=2.0-0.1*Math.abs(i-1.5)-0.05*i+0.1;
+  const t=new THREE.Mesh(new THREE.TorusGeometry(r,0.045,8,48,Math.PI*1.7),ribMat);
+  t.rotation.x=Math.PI/2;t.rotation.z=Math.PI*0.65;t.scale.set(0.9,1,1);
+  t.position.y=0.95-i*0.37;ribs.add(t);
+}
+const dia=new THREE.Mesh(new THREE.SphereGeometry(1.7,36,12,0,Math.PI*2,0,Math.PI/2),
+  new THREE.MeshPhongMaterial({color:0xc9504b,transparent:true,opacity:0.6,side:THREE.DoubleSide}));
+dia.scale.set(1,0.38,0.8);dia.position.y=-1.45;root.add(dia);
+
+// айналдыру
+let rotY=0.4,rotX=0.05,drag=false,lx=0,ly=0,lastTouch=0;
+wrap.addEventListener('pointerdown',e=>{drag=true;lx=e.clientX;ly=e.clientY;wrap.setPointerCapture(e.pointerId);});
+wrap.addEventListener('pointermove',e=>{if(!drag)return;rotY+=(e.clientX-lx)*0.01;rotX+=(e.clientY-ly)*0.006;
+  rotX=Math.max(-0.8,Math.min(0.8,rotX));lx=e.clientX;ly=e.clientY;lastTouch=performance.now();});
+['pointerup','pointercancel'].forEach(t=>wrap.addEventListener(t,()=>drag=false));
+function resize(){const w=wrap.clientWidth,h=wrap.clientHeight;if(renderer){renderer.setSize(w,h);}cam.aspect=w/h;cam.updateProjectionMatrix();}
+addEventListener('resize',resize);resize();
+
+// ---------- Физика ----------
+let V=0,ph=0,flow=0,Palv=0,cMax=0,cMin=0,Vt=0;
+const hist=[];const HN=520;
+function step(dt){
+  const T=60/S.rate,Ti=T/3;
+  const prev=ph;ph+=dt/T;
+  if(ph>=1){ph-=1;Vt=cMax-cMin;cMax=cMin=V;}
+  const tc=ph*T;
+  const Pm=tc<Ti?S.P*Math.sin(Math.PI*tc/Ti):0;
+  const n=6,h=dt/n;
+  for(let i=0;i<n;i++){flow=(Pm-V/S.C)/S.R;V+=flow*h;if(V<0)V=0;}
+  Palv=-S.R*flow; // атмосфераға қатысты
+  cMax=Math.max(cMax,V);cMin=Math.min(cMin,V);
+  return tc<Ti;
+}
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function draw(){
+  const c=$('ch'),dpr=Math.min(devicePixelRatio,2),w=c.clientWidth,h=c.clientHeight;
+  if(c.width!==w*dpr){c.width=w*dpr;c.height=h*dpr;}
+  const x=c.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,w,h);
+  x.strokeStyle=css('--line');x.lineWidth=1;x.beginPath();x.moveTo(0,h/2);x.lineTo(w,h/2);x.stroke();
+  let vm=0.8,fm=0.4;hist.forEach(p=>{vm=Math.max(vm,p[0]);fm=Math.max(fm,Math.abs(p[1]));});
+  [[0,css('--acc'),vm,false],[1,css('--blue'),fm,true]].forEach(([k,col,m,sg])=>{
+    x.strokeStyle=col;x.lineWidth=2;x.beginPath();
+    hist.forEach((p,i)=>{const X=i/HN*w,Y=sg?h/2-p[k]/m*(h/2-6):h-6-p[k]/m*(h-12);i?x.lineTo(X,Y):x.moveTo(X,Y);});x.stroke();});
+}
+let last=performance.now(),fc=0;
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt=Math.min((now-last)/1000,0.05);last=now;
+  const insp=step(dt);
+  hist.push([V,flow]);if(hist.length>HN)hist.shift();
+  const s=1+(Math.cbrt((FRC+V)/FRC)-1)*3;
+  lungs.scale.set(s,s,s);
+  const vn=Math.min(V/0.8,1.4);
+  ribs.scale.set(1+0.06*vn,1,1+0.06*vn);ribs.position.y=0.08*vn;
+  dia.position.y=-1.45-0.3*vn;
+  const g=Math.min(1,Math.abs(flow)/0.5);
+  treeMat.emissive.setHex(flow>=0?0x2a7fff:0xff8a3d);treeMat.emissiveIntensity=g*0.7;
+  if(!drag&&now-lastTouch>2500)rotY+=0.0025;
+  root.rotation.y=rotY+0.06*Math.sin(now/1500);root.rotation.x=rotX;
+  if(renderer)renderer.render(scene,cam);
+  $('phase').textContent=flow>=0.02?'↓ Дем алу':(V>0.01?'↑ Дем шығару':'');
+  $('phase').style.color=flow>=0?'var(--blue)':'var(--org)';
+  if(++fc%4===0){
+    $('sV').textContent=Math.round(V*1000);
+    $('sF').textContent=flow.toFixed(2);
+    $('sP').textContent=Palv.toFixed(1);
+    $('sM').textContent=(Vt*S.rate).toFixed(1);
+    draw();
+  }
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
